@@ -75,3 +75,7 @@ func (d *Daemon) IsDaemon() bool {
 func (d *Daemon) GetProcess() *os.Process {
 	return d.process
 }
+
+func (d *Daemon) Stop(signal os.Signal) error {
+	return d.process.Signal(signal)
+}

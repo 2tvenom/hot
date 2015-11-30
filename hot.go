@@ -5,6 +5,7 @@ import (
 	"os"
 	"syscall"
 	"time"
+	"fmt"
 )
 
 type (
@@ -113,6 +114,7 @@ func (h *Hot) run() (*os.Process, error) {
 			err := process.Signal(syscall.Signal(0))
 			//Process alive
 			if err == nil {
+				fmt.Printf("Found pid %d\n", process.Pid)
 				// If found send kill signal
 				err := process.Signal(h.Signal.signal)
 				if err != nil {
@@ -141,6 +143,7 @@ func (h *Hot) run() (*os.Process, error) {
 	// Run in goroutine signal watch
 	go func() {
 		h.Signal.WatchHandler(func() {
+			fmt.Printf("Catch signal at pid %d\n",os.Getpid())
 			h.Stop()
 		})
 	}()
@@ -153,6 +156,10 @@ func (h *Hot) run() (*os.Process, error) {
 
 // Stop method send stop signal to instance
 func (h *Hot) Stop() error {
+	//If demonized
+	if h.Daemon != nil && !h.Daemon.IsDaemon() {
+		return h.Daemon.Stop(h.Signal.signal)
+	}
 	return h.Instance.Stop()
 }
 

@@ -27,7 +27,7 @@ var (
 
 const (
 	_DATA    = "Foo bar"
-	_DATA_V2 = "Bazz Bazz"
+	_DATA_V2 = "BazzBazz"
 	_PORT    = "8080"
 )
 
@@ -35,44 +35,11 @@ type (
 	hotInstance struct {
 		stop chan chan bool
 	}
-
-	stopListener struct {
-		*net.TCPListener
-		stop chan bool
-	}
 )
-
-func (sl *stopListener) Accept() (net.Conn, error) {
-	for {
-		//Wait up to one second for a new connection
-		sl.SetDeadline(time.Now().Add(time.Second))
-
-		newConn, err := sl.TCPListener.Accept()
-
-		//Check for the channel being closed
-		select {
-		case <-sl.stop:
-			return nil, errors.New("Stopped")
-		default:
-			//If the channel is still open, continue as normal
-		}
-
-		if err != nil {
-			netErr, ok := err.(net.Error)
-
-			//If this is a timeout, then continue to wait for
-			//new connections
-			if ok && netErr.Timeout() && netErr.Temporary() {
-				continue
-			}
-		}
-
-		return newConn, err
-	}
-}
 
 func init() {
 	flag.BoolVar(&testFlag, "hot", false, "flag for run function in background and skip with testing")
+	flag.StringVar(&httpOutput, "httpout", _DATA, "http mock result")
 	flag.Parse()
 
 	hotDaemon = &Hot{
@@ -83,7 +50,7 @@ func init() {
 			DefaultStdOut:   os.Stdout,
 			WorkDir:         "./",
 			ProcessFileName: os.Args[0],
-			Arguments:       []string{"-test.run=TestDaemon", "-hot"},
+			Arguments:       []string{"-test.run=\"^TestDaemon$\"", "-hot"},
 		},
 		Pid: &PidFile{
 			FileName: pidFileName,
@@ -241,19 +208,30 @@ func TestRunHotServiceAsDaemonAndWait(t *testing.T) {
 
 	select {
 	case err := <-errChan:
-		t.Fatalf("Error create daemon : %s", err)
+		t.Errorf("Error create daemon : %s", err)
 	case <-time.After(time.Second):
 	}
 	err := checkProcess(_DATA)
 
 	if err != nil {
-		t.Fatalf("Error check hot instance daemon : %s", err)
+		t.Errorf("Error check hot instance daemon : %s", err)
 	}
+
+	println("Process pid %d\n", hotDaemon.Daemon.GetProcess().Pid)
+
+	time.Sleep(time.Second * 15)
 
 	err = hotDaemon.Daemon.GetProcess().Kill()
 
 	if err != nil {
-		t.Fatalf("Cant kill process with pid %d", err)
+		t.Errorf("Cant kill process with pid %d", err)
+	}
+
+	t.Logf("Process pid %d\n", hotDaemon.Daemon.GetProcess().Pid)
+
+	err = hotDaemon.Daemon.GetProcess().Signal(syscall.Signal(0))
+	if err == nil {
+		t.Errorf("Process still alive")
 	}
 }
 
@@ -264,54 +242,67 @@ func TestRunHotServiceAsDaemonWaitAndStop(t *testing.T) {
 		err := hotDaemon.RunAndWait()
 		errChan <- err
 	}()
+	//	defer hotDaemon.Daemon.GetProcess().Kill()
 
 	select {
 	case err := <-errChan:
-		t.Fatalf("Error create daemon : %s", err)
+		t.Errorf("Error create daemon : %s", err)
 	case <-time.After(time.Second):
 	}
 
 	err := checkProcess(_DATA)
 	if err != nil {
-		t.Fatalf("Error check hot instance daemon : %s", err)
+		t.Errorf("Error check hot instance daemon : %s", err)
 	}
 
 	err = hotDaemon.Stop()
 	if err != nil {
-		t.Fatalf("Error stop daemon : %s", err)
+		t.Errorf("Error stop daemon : %s", err)
+	}
+
+	err = hotDaemon.Daemon.GetProcess().Signal(syscall.Signal(0))
+	if err == nil {
+		t.Errorf("Process still alive")
 	}
 
 	err = checkProcess(_DATA)
 	if err == nil {
-		t.Fatalf("Process still alive")
+		t.Errorf("Process still work")
 	}
 }
 
-func TestHotServiceStop(t *testing.T) {
-	return
-	process, err := hotDaemon.Run()
-	if err != nil {
-		t.Fatalf("Error demonize %s", err)
-	}
-	// Wait starting http server
+func TestRunHotServiceAsDaemonRunAndReload(t *testing.T) {
+	process1, err := hotDaemon.Run()
+	defer process1.Kill()
+	fmt.Printf("Daemon1 pid %d\n", process1.Pid)
 	time.Sleep(time.Second)
 
-	// Check process correct work
-	checkProcess(_DATA)
-
-	err = syscall.Kill(process.Pid, syscall.SIGUSR1)
-
+	err = checkProcess(_DATA)
 	if err != nil {
-		t.Fatalf("Error send signal %s", err)
+		t.Fatalf("Error check hot instance daemon : %s", err)
 	}
+
+	hotDaemon.Daemon.Arguments = append(hotDaemon.Daemon.Arguments, "-httpout="+_DATA_V2)
+
+	process2, err := hotDaemon.Run()
+	defer process2.Kill()
+
+
+	err = process1.Signal(syscall.Signal(0))
+	if err == nil {
+		t.Errorf("Process still alive")
+	}
+
+	time.Sleep(time.Second * 15)
+	hotDaemon.Daemon.Arguments = hotDaemon.Daemon.Arguments[0:2]
 
 	time.Sleep(time.Second)
 
-	err = process.Signal(syscall.Signal(0))
-
+	err = checkProcess(_DATA_V2)
 	if err != nil {
-		t.Fatalf("Process with pid still alive")
+		t.Errorf("Error check hot instance daemon : %s", err)
 	}
+	hotDaemon.Stop()
 }
 
 func checkProcess(checkData string) error {
