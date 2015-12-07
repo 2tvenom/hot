@@ -34,12 +34,13 @@ func NewDaemon() *Daemon {
 	}
 
 	return &Daemon{
-		DefaultStdIn:  os.Stdin,
-		DefaultStdOut: os.Stdout,
-		DefaultStdErr: os.Stderr,
-		DefaultNull:   nullFile,
-		WorkDir:       "./",
-		Arguments:     []string{},
+		DefaultStdIn:    os.Stdin,
+		DefaultStdOut:   os.Stdout,
+		DefaultStdErr:   os.Stderr,
+		DefaultNull:     nullFile,
+		WorkDir:         "./",
+		ProcessFileName: os.Args[0],
+		Arguments:       []string{},
 	}
 }
 

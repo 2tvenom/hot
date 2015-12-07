@@ -186,7 +186,6 @@ func TestRunStandAloneProcessAndStop(t *testing.T) {
 		t.Fatalf("Send stop signl : %s", err)
 	}
 
-
 	err = checkProcess(_DATA)
 	if err == nil {
 		t.Fatalf("Hot instance still alive")
@@ -215,7 +214,7 @@ func TestRunAndHotReplaceStandAloneProcess(t *testing.T) {
 		DefaultStdOut:   os.Stderr,
 		WorkDir:         "./",
 		ProcessFileName: os.Args[0],
-		Arguments:       []string{"-test.run=TestStandaloneService", "-hot", "-httpout="+_DATA_V2},
+		Arguments:       []string{"-test.run=TestStandaloneService", "-hot", "-httpout=" + _DATA_V2},
 	}
 	_, err = process2.Demonization()
 	if err != nil {

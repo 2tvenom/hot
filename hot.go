@@ -2,7 +2,6 @@ package hot
 
 import (
 	"errors"
-	"fmt"
 	"os"
 	"syscall"
 	"time"
@@ -23,6 +22,7 @@ type (
 	// Hot is general structure
 	Hot struct {
 		Instance HotInstance
+		SwitchTimeOut time.Duration
 
 		Daemon *Daemon
 		Pid    *PidFile
@@ -41,9 +41,14 @@ type (
 	}
 )
 
+const (
+	_DEFAULT_SWITCH_TIMEOUT = time.Millisecond * 10
+)
+
 func NewHot(i HotInstance) HotStandalone {
 	return &Hot{
 		Instance: i,
+		SwitchTimeOut: _DEFAULT_SWITCH_TIMEOUT,
 		Pid: &PidFile{
 			FileName: DefaultPidFileName(),
 		},
@@ -51,9 +56,10 @@ func NewHot(i HotInstance) HotStandalone {
 	}
 }
 
-func NewHotDaemon(i HotInstance) HotStandalone {
+func NewHotDaemon(i HotInstance) HotDaemon {
 	return &Hot{
 		Instance: i,
+		SwitchTimeOut: _DEFAULT_SWITCH_TIMEOUT,
 		Pid: &PidFile{
 			FileName: DefaultPidFileName(),
 		},
@@ -115,14 +121,13 @@ func (h *Hot) run() (*os.Process, error) {
 				err := process.Signal(syscall.Signal(0))
 				//Process alive
 				if err == nil {
-					fmt.Printf("%d Found pid %d\n", os.Getpid(), process.Pid)
 					// If found send kill signal
 					err := process.Signal(h.Signal.signal)
 					if err != nil {
 						return nil, err
 					}
 
-					time.Sleep(time.Millisecond * 10)
+					<-time.After(h.SwitchTimeOut)
 				}
 			}
 
@@ -145,7 +150,6 @@ func (h *Hot) run() (*os.Process, error) {
 	// Run in goroutine signal watch
 	go func() {
 		h.Signal.WatchHandler(func() {
-			fmt.Printf("%d Catch signal\n", os.Getpid())
 			h.Stop()
 		})
 	}()
