@@ -3,6 +3,7 @@ package hot
 import (
 	"os"
 	"path/filepath"
+	"syscall"
 )
 
 const (
@@ -56,6 +57,15 @@ func (d *Daemon) Demonization() (*os.Process, error) {
 		Dir:   d.WorkDir,
 		Env:   []string{_DAEMON_MARK + "=" + _MARK_VALUE},
 		Files: []*os.File{d.DefaultStdIn, d.DefaultStdOut, d.DefaultStdErr, d.DefaultNull},
+		Sys: &syscall.SysProcAttr{
+			Foreground: false,
+		},
+	}
+
+	if d.Arguments == nil || len(d.Arguments) == 0 {
+		d.Arguments = []string{d.ProcessFileName}
+	} else {
+		d.Arguments = append([]string{d.ProcessFileName}, d.Arguments...)
 	}
 
 	process, err := os.StartProcess(d.ProcessFileName, d.Arguments, proc)

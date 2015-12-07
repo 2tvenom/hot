@@ -2,10 +2,10 @@ package hot
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"syscall"
 	"time"
-	"fmt"
 )
 
 type (
@@ -30,14 +30,13 @@ type (
 	}
 
 	HotStandalone interface {
-		Run() (*os.Process, error)
+		Run() error
 		Stop() error
 	}
 
 	HotDaemon interface {
-		Run() (*os.Process, error)
-		RunAndObserve() (*os.Process, error)
-		RunAndWait() (*os.Process, error)
+		RunAndRelease() (*os.Process, error)
+		RunAndWait() error
 		Stop() error
 	}
 )
@@ -64,8 +63,9 @@ func NewHotDaemon(i HotInstance) HotStandalone {
 }
 
 // Run hot service
-func (h *Hot) Run() (*os.Process, error) {
-	return h.run()
+func (h *Hot) Run() error {
+	_, err := h.run()
+	return err
 }
 
 func (h *Hot) run() (*os.Process, error) {
@@ -100,33 +100,35 @@ func (h *Hot) run() (*os.Process, error) {
 			return nil, err
 		}
 
-		// Move to old file name
-		err = PidFileMoveToOld(h.Pid.FileName)
+		if pid != os.Getpid() {
+			// Move to old file name
+			err = PidFileMoveToOld(h.Pid.FileName)
 
-		if err != nil {
-			return nil, err
-		}
-
-		// Find process
-		process, err := os.FindProcess(pid)
-		if err == nil {
-			//Check process
-			err := process.Signal(syscall.Signal(0))
-			//Process alive
-			if err == nil {
-				fmt.Printf("Found pid %d\n", process.Pid)
-				// If found send kill signal
-				err := process.Signal(h.Signal.signal)
-				if err != nil {
-					return nil, err
-				}
-
-				time.Sleep(time.Millisecond * 10)
+			if err != nil {
+				return nil, err
 			}
-		}
 
-		// Remove old pid file
-		PidFileOldRemove(h.Pid.FileName)
+			// Find process
+			process, err := os.FindProcess(pid)
+			if err == nil {
+				//Check process
+				err := process.Signal(syscall.Signal(0))
+				//Process alive
+				if err == nil {
+					fmt.Printf("%d Found pid %d\n", os.Getpid(), process.Pid)
+					// If found send kill signal
+					err := process.Signal(h.Signal.signal)
+					if err != nil {
+						return nil, err
+					}
+
+					time.Sleep(time.Millisecond * 10)
+				}
+			}
+
+			// Remove old pid file
+			PidFileOldRemove(h.Pid.FileName)
+		}
 	}
 
 	// Try open file
@@ -143,7 +145,7 @@ func (h *Hot) run() (*os.Process, error) {
 	// Run in goroutine signal watch
 	go func() {
 		h.Signal.WatchHandler(func() {
-			fmt.Printf("Catch signal at pid %d\n",os.Getpid())
+			fmt.Printf("%d Catch signal\n", os.Getpid())
 			h.Stop()
 		})
 	}()
@@ -161,6 +163,10 @@ func (h *Hot) Stop() error {
 		return h.Daemon.Stop(h.Signal.signal)
 	}
 	return h.Instance.Stop()
+}
+
+func (h *Hot) RunAndRelease() (*os.Process, error) {
+	return h.run()
 }
 
 func (h *Hot) RunAndWait() error {
